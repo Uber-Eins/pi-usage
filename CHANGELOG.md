@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 - **`get_usage` agent tool**: the agent can read quota windows, reset times, projected usage, balances, and available Codex resets for every configured provider (or a single requested one). Toggle it with the new **Usage tool** setting.
 - **Codex usage limit resets in `/usage`**: the OpenAI Codex section shows how many earned resets are available, and `x` opens a confirmation to redeem one.
 
+### Fixed
+- **OpenCode Go weekly projections were seven times too high**: the weekly window was scaled by 1/7 on top of already spanning the full week, which inflated projected usage and raised false critical quota warnings.
+
 ## [2.4.0] - 2026-10-29
 
 ### Removed

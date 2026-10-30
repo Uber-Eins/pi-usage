@@ -48,7 +48,9 @@ export function toToolWindow(window: QuotaWindow): ToolWindow {
   const counted =
     window.isCurrency ||
     (window.limitValue > 0 && window.limitValue !== 100 && window.label !== "Spend cap");
-  const note = [window.nextLabel && !hasReset ? window.nextLabel : undefined, window.nextAmount]
+  // The spend cap's "OK"/"Reached" label just repeats its usage text.
+  const statusLabel = window.label === "Spend cap" ? undefined : window.nextLabel;
+  const note = [statusLabel && !hasReset ? statusLabel : undefined, window.nextAmount]
     .filter(Boolean)
     .join(" · ");
   return {

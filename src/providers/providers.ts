@@ -557,8 +557,10 @@ export function parseOpenCodeGoUsage(data: {
       windowSeconds: 7 * 24 * 60 * 60,
       usedValue: data.weekly.usagePercent,
       limitValue: 100,
+      // windowSeconds already spans the full week, so the elapsed fraction
+      // needs no extra scaling (a 1/7 scale inflated projections sevenfold).
       showPace: true,
-      paceScale: 1 / 7,
+      paceScale: 1,
       limited: data.weekly.limited,
       nextLabel: data.weekly.limited ? "Limited" : "Resets",
     });

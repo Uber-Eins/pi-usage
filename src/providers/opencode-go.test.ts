@@ -107,6 +107,23 @@ describe("parseOpenCodeGoApiUsage", () => {
     expect(windows[0]).toMatchObject({ label: "5h Rolling", limited: true });
     expect(assessWindow(windows[0]).severity).toBe("critical");
   });
+
+  it("projects weekly usage from the real elapsed share of the week", () => {
+    // 56% used with ~2d4h left: ~69% of the week has elapsed, so the
+    // projection is ~81%, not seven times that.
+    const resetsAt = new Date(Date.now() + (2 * 24 + 4) * 60 * 60 * 1000);
+    const windows = parseOpenCodeGoUsage({
+      weekly: {
+        usagePercent: 56,
+        resetInSec: 0,
+        percentRemaining: 44,
+        resetTimeIso: resetsAt.toISOString(),
+      },
+    });
+    const assessment = assessWindow(windows[0]);
+    expect(assessment.projectedPercent).toBeGreaterThan(75);
+    expect(assessment.projectedPercent).toBeLessThan(90);
+  });
 });
 
 describe("queryOpenCodeGoQuota", () => {
