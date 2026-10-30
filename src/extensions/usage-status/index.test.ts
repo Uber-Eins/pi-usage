@@ -13,6 +13,7 @@ const BASE_CONFIG = {
   usageStatusPlacement: "statusBar" as const,
   tokenStatus: true,
   quotaWarnings: true,
+  usageTool: true,
   deferToSynthetic: true,
   hideUnconfiguredProviders: true,
 };

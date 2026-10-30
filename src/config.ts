@@ -12,6 +12,7 @@ export type UsageFeatureId =
   | "usageStatusPlacement"
   | "tokenStatus"
   | "quotaWarnings"
+  | "usageTool"
   | "deferToSynthetic"
   | "hideUnconfiguredProviders";
 
@@ -44,6 +45,8 @@ export interface UsageConfig {
   usageStatusPlacement?: UsageStatusPlacement;
   tokenStatus?: boolean;
   quotaWarnings?: boolean;
+  /** Register the `get_usage` tool so the agent can read provider usage. */
+  usageTool?: boolean;
   /** When true and pi-synthetic's usage footer is active, hide pi-usage's Synthetic footer. */
   deferToSynthetic?: boolean;
   /** When true, only register `/provider:usage` commands for providers with credentials. */
@@ -58,6 +61,7 @@ export interface ResolvedUsageConfig {
   usageStatusPlacement: UsageStatusPlacement;
   tokenStatus: boolean;
   quotaWarnings: boolean;
+  usageTool: boolean;
   deferToSynthetic: boolean;
   hideUnconfiguredProviders: boolean;
 }
@@ -70,6 +74,7 @@ const DEFAULT_CONFIG: ResolvedUsageConfig = {
   usageStatusPlacement: "statusBar",
   tokenStatus: true,
   quotaWarnings: true,
+  usageTool: true,
   deferToSynthetic: true,
   hideUnconfiguredProviders: true,
 };
@@ -114,6 +119,7 @@ class UsageConfigStore {
           : DEFAULT_CONFIG.usageStatusPlacement,
       tokenStatus: input?.tokenStatus ?? DEFAULT_CONFIG.tokenStatus,
       quotaWarnings: input?.quotaWarnings ?? DEFAULT_CONFIG.quotaWarnings,
+      usageTool: input?.usageTool ?? DEFAULT_CONFIG.usageTool,
       deferToSynthetic:
         input?.deferToSynthetic ?? DEFAULT_CONFIG.deferToSynthetic,
       hideUnconfiguredProviders:
@@ -220,6 +226,11 @@ const FEATURE_META: Array<{
     id: "quotaWarnings",
     label: "Quota warnings",
     description: "Toggle projected-usage warning notifications",
+  },
+  {
+    id: "usageTool",
+    label: "Usage tool",
+    description: "Toggle the `get_usage` tool that lets the agent read provider usage",
   },
   {
     id: "deferToSynthetic",
