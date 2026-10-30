@@ -62,9 +62,23 @@ describe("runUsageTool", () => {
     const result = await runUsageTool({}, auth, model, undefined, {
       isConfigured: (p) => p === "openai-codex" || p === "anthropic" || p === "zai",
       fetchQuotas: fetchQuotas as never,
+      fetchCodexResets: async () => ({
+        ok: true,
+        availableCount: 2,
+        options: [
+          { creditId: "a", title: "Full reset", description: "", expiresAt: new Date("2026-11-05T00:00:00Z") },
+        ],
+      }),
     });
 
     expect(fetchQuotas).toHaveBeenCalledTimes(3);
+    expect(result.text).toContain(
+      "Usage limit resets: 2 available (the user can redeem them from /usage), next expires 2026-11-05T00:00:00.000Z",
+    );
+    expect(result.details.providers.find((p) => p.provider === "openai-codex")?.codexResets).toEqual({
+      available: 2,
+      nextExpiry: "2026-11-05T00:00:00.000Z",
+    });
     // zai only produced a "config" error, so it is hidden from the overview.
     expect(result.details.providers.map((p) => p.provider)).toEqual([
       "anthropic",

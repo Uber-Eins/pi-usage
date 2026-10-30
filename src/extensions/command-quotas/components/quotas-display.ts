@@ -4,6 +4,7 @@ import type { Component } from "@earendil-works/pi-tui";
 import { Loader, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
 import pkg from "../../../../package.json" with { type: "json" };
 import { PROVIDER_LABELS } from "../../../lib/quotas.js";
+import type { CodexResetAvailability, CodexResetOption } from "../../../providers/codex-resets.js";
 import type { QuotasResult, SupportedQuotaProvider } from "../../../types/quotas.js";
 import {
   assessWindow,
@@ -59,9 +60,24 @@ function renderProgressBar(
   return parts.join("");
 }
 
+export interface CodexResetActions {
+  /** Redeem one reset and return a human-readable outcome message. */
+  redeem: (option: CodexResetOption) => Promise<string>;
+}
+
+function formatExpiry(option: CodexResetOption): string {
+  if (!option.expiresAt) return "does not expire";
+  return `expires ${option.expiresAt.toLocaleString()}`;
+}
+
 export class QuotasComponent implements Component {
   private state: QuotasState = { type: "loading" };
   private loader: Loader | null = null;
+  private codexResets: CodexResetAvailability | undefined;
+  /** Index of the highlighted reset option while the confirmation is open. */
+  private resetPicker: number | null = null;
+  private redeeming = false;
+  private resetMessage: string | undefined;
 
   constructor(
     private theme: Theme,
@@ -69,6 +85,7 @@ export class QuotasComponent implements Component {
     private title: string,
     private onClose: () => void,
     private onRefetch: () => void,
+    private resetActions?: CodexResetActions,
   ) {
     this.startLoader();
   }
@@ -98,7 +115,62 @@ export class QuotasComponent implements Component {
     this.state = state;
   }
 
+  setCodexResets(resets: CodexResetAvailability | undefined): void {
+    this.codexResets = resets;
+    if (!this.canRedeem()) this.resetPicker = null;
+  }
+
+  private canRedeem(): boolean {
+    return (
+      !!this.resetActions &&
+      this.state.type === "loaded" &&
+      (this.codexResets?.options.length ?? 0) > 0
+    );
+  }
+
+  private async redeem(option: CodexResetOption): Promise<void> {
+    if (!this.resetActions) return;
+    this.redeeming = true;
+    this.resetMessage = "Redeeming usage limit reset...";
+    this.tui.requestRender();
+    try {
+      this.resetMessage = await this.resetActions.redeem(option);
+    } catch (err) {
+      this.resetMessage = `Reset failed: ${err instanceof Error ? err.message : String(err)}`;
+    } finally {
+      this.redeeming = false;
+      this.resetPicker = null;
+    }
+    this.onRefetch();
+  }
+
+  private handleResetPickerInput(data: string): boolean {
+    const options = this.codexResets?.options ?? [];
+    const index = this.resetPicker ?? 0;
+    if (matchesKey(data, "escape") || data === "n") {
+      this.resetPicker = null;
+    } else if (matchesKey(data, "up")) {
+      this.resetPicker = (index - 1 + options.length) % options.length;
+    } else if (matchesKey(data, "down")) {
+      this.resetPicker = (index + 1) % options.length;
+    } else if (matchesKey(data, "enter") || data === "y") {
+      const option = options[index];
+      if (option) void this.redeem(option);
+    }
+    this.tui.requestRender();
+    return true;
+  }
+
   handleInput(data: string): boolean {
+    // A redemption cannot be cancelled once it was confirmed.
+    if (this.redeeming) return true;
+    if (this.resetPicker !== null) return this.handleResetPickerInput(data);
+    if (data === "x" && this.canRedeem()) {
+      this.resetPicker = 0;
+      this.resetMessage = undefined;
+      this.tui.requestRender();
+      return true;
+    }
     if (matchesKey(data, "escape") || data === "q") {
       this.onClose();
       return true;
@@ -120,10 +192,24 @@ export class QuotasComponent implements Component {
       lines.push(...(this.loader ? this.loader.render(width) : [this.theme.fg("muted", "  Fetching quotas...")]));
     } else {
       lines.push(...this.renderLoaded(this.state.snapshots, width));
+      if (this.resetPicker !== null) lines.push(...this.renderResetPicker());
+    }
+
+    if (this.resetMessage) {
+      lines.push("");
+      lines.push(`  ${this.theme.fg("accent", this.resetMessage)}`);
     }
 
     lines.push("");
-    lines.push(this.theme.fg("dim", `  pi-usage v${pkg.version}  ·  r to refresh  q/Esc to close`));
+    const resetHint = this.canRedeem() && this.resetPicker === null ? "  x reset codex" : "";
+    lines.push(
+      this.theme.fg(
+        "dim",
+        this.resetPicker !== null
+          ? "  ↑↓ select  enter/y redeem  n/Esc cancel"
+          : `  pi-usage v${pkg.version}  ·  r to refresh${resetHint}  q/Esc to close`,
+      ),
+    );
     lines.push(...border.render(width));
     // Pi rejects over-wide lines. Bound the complete output, including help
     // text and loader output, when the terminal is narrow or resized.
@@ -148,6 +234,33 @@ export class QuotasComponent implements Component {
     }
     if (lines.at(-1) === "") lines.pop();
     return lines;
+  }
+
+  private renderResetPicker(): string[] {
+    const options = this.codexResets?.options ?? [];
+    const lines = ["", `  ${this.theme.fg("accent", this.theme.bold("Redeem a Codex usage limit reset?"))}`];
+    options.forEach((option, index) => {
+      const selected = index === this.resetPicker;
+      const marker = selected ? this.theme.fg("accent", "›") : " ";
+      const title = selected ? this.theme.bold(option.title) : option.title;
+      lines.push(`  ${marker} ${title} ${this.theme.fg("dim", `(${formatExpiry(option)})`)}`);
+      if (selected) lines.push(`      ${this.theme.fg("dim", option.description)}`);
+    });
+    lines.push(
+      `  ${this.theme.fg("warning", "This consumes one earned reset for the current OpenAI Codex account.")}`,
+    );
+    return lines;
+  }
+
+  private renderResetLine(): string | undefined {
+    const resets = this.codexResets;
+    if (!resets) return undefined;
+    if (resets.availableCount === 0) {
+      return `    ${this.theme.fg("dim", "Resets: none available")}`;
+    }
+    const label = resets.availableCount === 1 ? "reset" : "resets";
+    const hint = this.resetActions ? this.theme.fg("dim", "  (x to redeem)") : "";
+    return `    ${this.theme.fg("accent", `Resets: ${resets.availableCount} ${label} available`)}${hint}`;
   }
 
   private renderProvider(snapshot: Snapshot, maxWidth: number): string[] {
@@ -230,6 +343,11 @@ export class QuotasComponent implements Component {
           ),
         );
       }
+    }
+
+    if (snapshot.provider === "openai-codex") {
+      const resetLine = this.renderResetLine();
+      if (resetLine) lines.push(truncateToWidth(resetLine, maxWidth));
     }
 
     return lines;

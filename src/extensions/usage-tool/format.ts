@@ -34,6 +34,8 @@ export interface ToolProviderEntry {
   ok: boolean;
   error?: string;
   windows: ToolWindow[];
+  /** OpenAI Codex only: earned usage-limit resets that can be redeemed. */
+  codexResets?: { available: number; nextExpiry?: string };
 }
 
 function round(value: number): number {
@@ -115,6 +117,17 @@ function formatWindowLine(window: ToolWindow): string {
 export function formatProviderEntry(entry: ToolProviderEntry): string {
   const header = `${entry.label} (${entry.provider})${entry.active ? " [current model]" : ""}`;
   if (!entry.ok) return `${header}\n  error: ${entry.error}`;
-  if (entry.windows.length === 0) return `${header}\n  no quota windows reported`;
-  return [header, ...entry.windows.map(formatWindowLine)].join("\n");
+  const lines = [header];
+  if (entry.windows.length === 0) lines.push("  no quota windows reported");
+  lines.push(...entry.windows.map(formatWindowLine));
+  if (entry.codexResets) {
+    const { available, nextExpiry } = entry.codexResets;
+    lines.push(
+      available > 0
+        ? `  Usage limit resets: ${available} available (the user can redeem them from /usage)` +
+            (nextExpiry ? `, next expires ${nextExpiry}` : "")
+        : "  Usage limit resets: none available",
+    );
+  }
+  return lines.join("\n");
 }

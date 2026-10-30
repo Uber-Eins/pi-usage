@@ -363,3 +363,106 @@ describe("QuotasComponent", () => {
     expect(output).not.toContain("$12.50 / $12.50");
   });
 });
+
+describe("QuotasComponent Codex resets", () => {
+  const codexSnapshot = {
+    provider: "openai-codex" as const,
+    result: {
+      success: true as const,
+      data: {
+        provider: "openai-codex" as const,
+        windows: [
+          {
+            provider: "openai-codex" as const,
+            label: "5h",
+            usedPercent: 100,
+            resetsAt: new Date(Date.now() + 60 * 60 * 1000),
+            windowSeconds: 5 * 60 * 60,
+            usedValue: 100,
+            limitValue: 100,
+            showPace: false,
+          },
+        ],
+      },
+    },
+  };
+
+  const resets = {
+    availableCount: 2,
+    options: [
+      { creditId: "a", title: "Full reset", description: "Reset now." },
+      { creditId: "b", title: "Weekly reset", description: "Reset the week." },
+    ],
+  };
+
+  function setup() {
+    const redeem = vi.fn(async () => "Usage reset. 1 usage limit reset left.");
+    const onRefetch = vi.fn();
+    const component = new QuotasComponent(
+      fakeTheme() as any,
+      { requestRender: () => {} } as any,
+      "Quotas",
+      () => {},
+      onRefetch,
+      { redeem },
+    );
+    component.setState({ type: "loaded", snapshots: [codexSnapshot] });
+    component.setCodexResets(resets);
+    const text = () => stripAnsi(component.render(100).join("\n"));
+    return { component, redeem, onRefetch, text };
+  }
+
+  it("shows the available resets and the redeem hint", () => {
+    const { component, text } = setup();
+    try {
+      expect(text()).toContain("Resets: 2 resets available");
+      expect(text()).toContain("x reset codex");
+      component.setCodexResets({ availableCount: 0, options: [] });
+      expect(text()).toContain("Resets: none available");
+      expect(text()).not.toContain("x reset codex");
+    } finally {
+      component.destroy();
+    }
+  });
+
+  it("confirms, redeems the selected reset, and refreshes", async () => {
+    const { component, redeem, onRefetch, text } = setup();
+    try {
+      expect(component.handleInput("x")).toBe(true);
+      expect(text()).toContain("Redeem a Codex usage limit reset?");
+      component.handleInput("\x1b[B"); // down
+      component.handleInput("y");
+      await vi.waitFor(() => expect(onRefetch).toHaveBeenCalledTimes(1));
+      expect(redeem).toHaveBeenCalledWith(resets.options[1]);
+      expect(text()).toContain("Usage reset. 1 usage limit reset left.");
+      expect(text()).not.toContain("Redeem a Codex usage limit reset?");
+    } finally {
+      component.destroy();
+    }
+  });
+
+  it("cancels the confirmation without closing the dashboard", () => {
+    const onClose = vi.fn();
+    const redeem = vi.fn(async () => "");
+    const component = new QuotasComponent(
+      fakeTheme() as any,
+      { requestRender: () => {} } as any,
+      "Quotas",
+      onClose,
+      () => {},
+      { redeem },
+    );
+    try {
+      component.setState({ type: "loaded", snapshots: [codexSnapshot] });
+      component.setCodexResets(resets);
+      component.handleInput("x");
+      component.handleInput("\x1b");
+      expect(onClose).not.toHaveBeenCalled();
+      expect(redeem).not.toHaveBeenCalled();
+      component.handleInput("\x1b");
+      expect(onClose).toHaveBeenCalledTimes(1);
+    } finally {
+      component.destroy();
+    }
+  });
+});

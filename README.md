@@ -55,6 +55,14 @@ Restart or `/reload` to load the extension.
 
 `/usage` opens a bordered TUI view showing all configured providers side by side with progress bars, used/remaining counts, and reset times. Hourly and weekly bars include a `|` at the current elapsed time so you can tell if usage is ahead of or behind pace. Press `r` to refresh, `q` or `Esc` to close.
 
+### Codex usage limit resets
+
+When OpenAI Codex is shown in the dashboard, its section also lists how many earned usage-limit resets the account has. Press `x` to redeem one: pick a reset with `↑`/`↓` (its expiry and description are shown), then confirm with `Enter`/`y`, or cancel with `n`/`Esc`. A confirmed redemption cannot be cancelled; the dashboard refreshes afterwards with the outcome. The reset endpoints are undocumented ChatGPT backend APIs and may change without notice.
+
+### Agent tool
+
+The `get_usage` tool lets the agent read provider usage itself: used percentage per window, reset times, projected usage at the current pace, balances, and (for Codex) the number of available usage-limit resets. Without arguments it reports every configured provider and marks the current model's provider; pass `provider` to check one, or `force: true` to skip the short cache. The agent cannot redeem resets.
+
 ### Footer status
 
 When the active model is from a supported provider, the Pi footer shows real-time quota headroom refreshed every 60 seconds and on each turn. Use the **Usage status placement** setting to keep it in the shared footer row (`statusBar`) or render it on a dedicated line above/below the editor, which avoids collisions with other extensions in the status row.
@@ -73,6 +81,7 @@ Automatic warning notifications when usage or the current pace risks exhausting 
 - Usage status placement — shared footer bar (default) or a dedicated line above/below the editor
 - Token usage status and `/tokens`
 - Quota warning notifications
+- Usage tool — the `get_usage` agent tool
 - Defer to Synthetic — hide the Synthetic footer when `pi-synthetic` is also showing usage
 - Hide unconfigured providers — only register `/provider:usage` commands for providers that have credentials (on by default)
 

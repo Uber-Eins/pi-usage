@@ -12,6 +12,7 @@ import {
   isSupportedProvider,
   SUPPORTED_PROVIDERS,
 } from "../../lib/quotas.js";
+import { fetchCodexResetCredits } from "../../providers/codex-resets.js";
 import type { SupportedQuotaProvider } from "../../types/quotas.js";
 import {
   formatProviderEntry,
@@ -30,6 +31,7 @@ export interface UsageToolParams {
 export interface UsageToolDeps {
   isConfigured?: (provider: SupportedQuotaProvider) => boolean;
   fetchQuotas?: typeof fetchProviderQuotas;
+  fetchCodexResets?: typeof fetchCodexResetCredits;
 }
 
 export interface UsageToolResult {
@@ -90,6 +92,19 @@ export async function runUsageTool(
   const providers = visible.map((snapshot) =>
     toProviderEntry(snapshot, activeProvider),
   );
+
+  const codex = providers.find((entry) => entry.provider === "openai-codex" && entry.ok);
+  if (codex) {
+    const resets = await (deps.fetchCodexResets ?? fetchCodexResetCredits)(authStorage, signal);
+    // Reset credits are a bonus; a failed lookup just omits the line.
+    if (resets.ok) {
+      const nextExpiry = resets.options.find((option) => option.expiresAt)?.expiresAt;
+      codex.codexResets = {
+        available: resets.availableCount,
+        ...(nextExpiry ? { nextExpiry: nextExpiry.toISOString() } : {}),
+      };
+    }
+  }
 
   const lines: string[] = [];
   if (currentModel) {

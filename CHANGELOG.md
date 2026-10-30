@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **`get_usage` agent tool**: the agent can read quota windows, reset times, projected usage, balances, and available Codex resets for every configured provider (or a single requested one). Toggle it with the new **Usage tool** setting.
+- **Codex usage limit resets in `/usage`**: the OpenAI Codex section shows how many earned resets are available, and `x` opens a confirmation to redeem one.
+
 ## [2.4.0] - 2026-10-29
 
 ### Removed

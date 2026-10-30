@@ -4,25 +4,49 @@ import {
   USAGE_EXTENSIONS_REQUEST_EVENT,
   configLoader,
 } from "../../config.js";
-import { quotaAuthStorage } from "../../lib/auth.js";
+import { type AuthStorage, quotaAuthStorage } from "../../lib/auth.js";
 import { isProviderConfigured } from "../../lib/provider-availability.js";
 import {
   fetchAllProviderQuotas,
   fetchProviderQuotas,
   SUPPORTED_PROVIDERS,
 } from "../../lib/quotas.js";
+import {
+  type CodexResetOption,
+  consumeCodexResetCredit,
+  fetchCodexResetCredits,
+  formatCodexResetOutcome,
+} from "../../providers/codex-resets.js";
 import type { QuotasResult, SupportedQuotaProvider } from "../../types/quotas.js";
-import { QuotasComponent } from "./components/quotas-display.js";
+import { type CodexResetActions, QuotasComponent } from "./components/quotas-display.js";
 import { getProviderCommandInfo } from "./provider-commands.js";
 import { filterDashboardSnapshots } from "./visibility.js";
 
 type Snapshot = { provider: SupportedQuotaProvider; result: QuotasResult };
+
+function showsCodex(snapshots: Snapshot[]): boolean {
+  return snapshots.some(
+    ({ provider, result }) => provider === "openai-codex" && result.success,
+  );
+}
+
+export function codexResetActions(authStorage: AuthStorage): CodexResetActions {
+  return {
+    async redeem(option: CodexResetOption): Promise<string> {
+      const outcome = await consumeCodexResetCredit(authStorage, option);
+      if (!outcome.ok) return `Reset failed: ${outcome.message}`;
+      const after = await fetchCodexResetCredits(authStorage);
+      return formatCodexResetOutcome(outcome, after.ok ? after.availableCount : undefined);
+    },
+  };
+}
 
 async function openQuotaView(
   title: string,
   loadSnapshots: (force: boolean, signal?: AbortSignal) => Promise<Snapshot[]>,
   ctx: ExtensionCommandContext,
 ): Promise<void> {
+  const authStorage = quotaAuthStorage(ctx.modelRegistry);
   const result = await ctx.ui.custom<null>((tui, theme, _kb, done) => {
     const controller = new AbortController();
     const component = new QuotasComponent(
@@ -38,12 +62,23 @@ async function openQuotaView(
         tui.requestRender();
         void load(true);
       },
+      codexResetActions(authStorage),
     );
 
     async function load(force = false): Promise<void> {
       const snapshots = await loadSnapshots(force, controller.signal);
       if (controller.signal.aborted) return;
       component.setState({ type: "loaded", snapshots });
+      tui.requestRender();
+
+      if (!showsCodex(snapshots)) {
+        component.setCodexResets(undefined);
+        return;
+      }
+      const resets = await fetchCodexResetCredits(authStorage, controller.signal);
+      if (controller.signal.aborted) return;
+      // A failed lookup just hides the reset line; the quota view still works.
+      component.setCodexResets(resets.ok ? resets : undefined);
       tui.requestRender();
     }
 

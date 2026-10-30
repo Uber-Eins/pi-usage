@@ -41,7 +41,7 @@ function isTimeoutReason(reason: unknown): boolean {
   );
 }
 
-async function providerAccessToken(
+export async function providerAccessToken(
   authStorage: AuthStorage,
   provider: string,
 ): Promise<string | undefined> {
@@ -113,7 +113,7 @@ function isDirectAnthropicApiKey(token: string): boolean {
   return token.startsWith("sk-ant-api");
 }
 
-function codexAccountId(authStorage: AuthStorage): string | undefined {
+export function codexAccountId(authStorage: AuthStorage): string | undefined {
   const credential = authStorage.get("openai-codex") as any;
   if (typeof credential?.accountId === "string") return credential.accountId;
   try {
@@ -125,7 +125,7 @@ function codexAccountId(authStorage: AuthStorage): string | undefined {
   }
 }
 
-type FetchJsonResult =
+export type FetchJsonResult =
   | { ok: true; data: any }
   | {
       ok: false;
@@ -162,7 +162,7 @@ function cleanHttpErrorMessage(body: string): string {
   return trimmed;
 }
 
-async function fetchJson(
+export async function fetchJson(
   url: string,
   init: RequestInit,
   signal?: AbortSignal,
@@ -245,6 +245,20 @@ export async function fetchAnthropicQuotasWithToken(
   return success("anthropic", parseAnthropicUsage(result.data));
 }
 
+export function codexHeaders(
+  accessToken: string,
+  accountId: string,
+): Record<string, string> {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "ChatGPT-Account-Id": accountId,
+    Accept: "application/json",
+    Origin: "https://chatgpt.com",
+    Referer: "https://chatgpt.com/",
+    "User-Agent": "Mozilla/5.0",
+  };
+}
+
 export async function fetchCodexQuotasWithToken(
   accessToken: string | undefined,
   accountId: string | undefined,
@@ -254,16 +268,7 @@ export async function fetchCodexQuotasWithToken(
   if (!accountId) return failure("No Codex account id found", "config");
   const result = await fetchJson(
     "https://chatgpt.com/backend-api/wham/usage",
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "ChatGPT-Account-Id": accountId,
-        Accept: "application/json",
-        Origin: "https://chatgpt.com",
-        Referer: "https://chatgpt.com/",
-        "User-Agent": "Mozilla/5.0",
-      },
-    },
+    { headers: codexHeaders(accessToken, accountId) },
     signal,
   );
   if (!result.ok) return failure(result.message, result.kind);
