@@ -24,7 +24,7 @@ const PROVIDER_ENV_VARS: Record<SupportedQuotaProvider, readonly string[]> = {
   // openai-codex has no environment credential in pi-ai; it is OAuth plus the
   // `~/.codex/auth.json` fallback below. OPENAI_API_KEY belongs to the `openai`
   // provider and does not authenticate openai-codex, so it is deliberately
-  // absent — including it would leave `/codex:usage` visible and broken.
+  // absent — including it would leave `/usage codex` offered and broken.
   "openai-codex": [],
   "github-copilot": ["COPILOT_GITHUB_TOKEN"],
   openrouter: ["OPENROUTER_API_KEY"],

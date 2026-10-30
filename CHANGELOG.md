@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- **One `/usage` command**: provider views moved from `/codex:usage`-style commands to `/usage codex`, and `/usage:settings` became `/usage settings`. The old commands are removed. Typing `/usage ` completes `settings` and the configured providers; full provider ids such as `/usage openai-codex` also work. The provider list follows **Hide unconfigured providers** live, without `/reload`.
+
 ### Added
 - **`get_usage` agent tool**: the agent can read quota windows, reset times, projected usage, balances, and available Codex resets for every configured provider (or a single requested one). Toggle it with the new **Usage tool** setting.
 - **Codex usage limit resets in `/usage`**: the OpenAI Codex section shows how many earned resets are available, and `x` opens a confirmation to redeem one.

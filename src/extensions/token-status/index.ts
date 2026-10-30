@@ -188,7 +188,7 @@ export default async function (pi: ExtensionAPI) {
       refresher.stop(currentContext);
       return;
     }
-    // Same guard as session_start: enabling token-status from /usage:settings
+    // Same guard as session_start: enabling token-status from /usage settings
     // must not start the Go rolling-cost refresher for a non-Go provider.
     if (currentContext) {
       if (!isGoProvider(currentContext.model?.provider)) {
@@ -237,7 +237,7 @@ export default async function (pi: ExtensionAPI) {
     refresher.stop(ctx);
   });
 
-  // Register regardless of the enabled flag so /usage:settings can re-enable
+  // Register regardless of the enabled flag so /usage settings can re-enable
   // a feature that was disabled at startup.
   pi.events.on(USAGE_EXTENSIONS_REQUEST_EVENT, () => {
     pi.events.emit(USAGE_EXTENSIONS_REGISTER_EVENT, {

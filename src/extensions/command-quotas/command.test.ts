@@ -3,8 +3,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { inMemoryAuthStorage } from "../../lib/auth.js";
 import { SUPPORTED_PROVIDERS } from "../../lib/quotas.js";
-import { registerUsageCommands } from "./command.js";
-import { getProviderCommandInfo } from "./provider-commands.js";
+import { registerUsageCommands, usageArgumentCompletions } from "./command.js";
 
 // Provider credentials can leak in from the host environment (pi resolves
 // API keys from env vars, and the Synthetic provider reads
@@ -49,6 +48,7 @@ function registeredCommands(
       registerCommand(name: string, command: any) {
         commands.set(name, command);
       },
+      events: { on: () => () => {}, emit: () => {} },
     } as any,
     options,
   );
@@ -57,56 +57,40 @@ function registeredCommands(
 
 function contextWithoutCredentials(notify: ReturnType<typeof vi.fn>) {
   return {
+    cwd: join(tmpdir(), "pi-usage-test-no-home"),
     modelRegistry: { authStorage: inMemoryAuthStorage() },
     ui: {
       custom: async () => undefined,
       notify,
+      select: vi.fn(async () => "cancel"),
     },
   } as any;
 }
 
-describe("quota command visibility", () => {
+function values(items: ReturnType<typeof usageArgumentCompletions>) {
+  return items?.map((item) => item.value) ?? [];
+}
+
+describe("/usage command", () => {
+  it("registers a single command", () => {
+    expect([...registeredCommands().keys()]).toEqual(["usage"]);
+  });
+
   it("hides unconfigured providers from the combined dashboard", async () => {
     const commands = registeredCommands({ isConfigured: () => false });
     const notify = vi.fn();
 
-    await commands.get("usage").handler(
-      "",
-      contextWithoutCredentials(notify),
-    );
+    await commands.get("usage").handler("", contextWithoutCredentials(notify));
 
     expect(notify).toHaveBeenCalledWith("No quota data available", "info");
   });
 
-  it("registers provider commands only for configured providers", () => {
-    const commands = registeredCommands({
-      isConfigured: (provider) => provider === "anthropic",
-    });
-
-    expect(commands.has("usage")).toBe(true);
-    expect(commands.has("anthropic:usage")).toBe(true);
-    expect(commands.has("grok:usage")).toBe(false);
-    expect(commands.has("xai:usage")).toBe(false);
-    expect(commands.has("minimax:usage")).toBe(false);
-  });
-
-  it("registers every provider when hiding is disabled", () => {
-    const commands = registeredCommands({ hideUnconfigured: false });
-
-    for (const provider of SUPPORTED_PROVIDERS) {
-      expect(commands.has(getProviderCommandInfo(provider).commandName)).toBe(
-        true,
-      );
-    }
-    expect(commands.has("grok:usage")).toBe(true);
-  });
-
-  it("keeps provider-specific commands diagnostic", async () => {
+  it("keeps provider views diagnostic", async () => {
     const commands = registeredCommands({ hideUnconfigured: false });
     const notify = vi.fn();
 
-    await commands.get("anthropic:usage").handler(
-      "",
+    await commands.get("usage").handler(
+      "anthropic",
       contextWithoutCredentials(notify),
     );
 
@@ -114,5 +98,54 @@ describe("quota command visibility", () => {
       expect.stringContaining("No Anthropic OAuth token found"),
       "info",
     );
+  });
+
+  it("opens settings from /usage settings", async () => {
+    const commands = registeredCommands();
+    const ctx = contextWithoutCredentials(vi.fn());
+
+    await commands.get("usage").handler("settings", ctx);
+
+    expect(ctx.ui.select).toHaveBeenCalledWith("Save settings to", [
+      "global",
+      "local",
+      "cancel",
+    ]);
+  });
+
+  it("explains unknown arguments", async () => {
+    const commands = registeredCommands();
+    const notify = vi.fn();
+
+    await commands.get("usage").handler("nope", contextWithoutCredentials(notify));
+
+    expect(notify).toHaveBeenCalledWith(
+      expect.stringContaining('Unknown /usage argument "nope"'),
+      "warning",
+    );
+  });
+});
+
+describe("/usage argument completions", () => {
+  it("offers settings and only configured providers", () => {
+    const items = usageArgumentCompletions("", {
+      isConfigured: (provider) => provider === "openai-codex",
+    });
+    expect(values(items)).toEqual(["settings", "codex"]);
+  });
+
+  it("offers every provider when hiding is disabled", () => {
+    const all = values(usageArgumentCompletions("", { hideUnconfigured: false }));
+    expect(all).toHaveLength(SUPPORTED_PROVIDERS.length + 1);
+    expect(all).toContain("grok");
+  });
+
+  it("filters by the typed prefix", () => {
+    const options = { hideUnconfigured: false };
+    expect(values(usageArgumentCompletions("co", options))).toEqual([
+      "codex",
+      "commandcode",
+    ]);
+    expect(usageArgumentCompletions("zzz", options)).toBeNull();
   });
 });

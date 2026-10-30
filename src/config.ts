@@ -49,7 +49,7 @@ export interface UsageConfig {
   usageTool?: boolean;
   /** When true and pi-synthetic's usage footer is active, hide pi-usage's Synthetic footer. */
   deferToSynthetic?: boolean;
-  /** When true, only register `/provider:usage` commands for providers with credentials. */
+  /** When true, only offer `/usage <provider>` completions for providers with credentials. */
   hideUnconfiguredProviders?: boolean;
 }
 
@@ -203,8 +203,7 @@ const FEATURE_META: Array<{
   {
     id: "providerCommands",
     label: "Provider usage commands",
-    description:
-      "Toggle `/anthropic:usage`, `/codex:usage`, `/github:usage`, `/openrouter:usage`, and `/synthetic:usage`",
+    description: "Toggle `/usage <provider>` views such as `/usage codex`",
   },
   {
     id: "usageStatus",
@@ -242,7 +241,7 @@ const FEATURE_META: Array<{
     id: "hideUnconfiguredProviders",
     label: "Hide unconfigured providers",
     description:
-      "Only register `/provider:usage` commands for providers that have credentials",
+      "Only offer `/usage <provider>` completions for providers that have credentials",
   },
 ];
 
@@ -262,81 +261,104 @@ const USAGE_STATUS_PLACEMENTS: UsageStatusPlacement[] = [
   "belowEditor",
 ];
 
-export function registerUsageSettings(
-  pi: ExtensionAPI,
-  getLoadedFeatures: () => Set<UsageFeatureId>,
-): void {
-  pi.registerCommand("usage:settings", {
-    description: "Configure quota extension settings",
-    handler: async (_args, ctx) => {
-      await configLoader.load(ctx.cwd);
-      const scopeChoice = await ctx.ui.select("Save settings to", [
-        "global",
-        "local",
-        "cancel",
-      ]);
-      if (!scopeChoice || scopeChoice === "cancel") return;
-      const scope = scopeChoice as "global" | "local";
-      const draft: ResolvedUsageConfig = { ...configLoader.getConfig() };
-
-      while (true) {
-        const choices = FEATURE_META.map((feature) => {
-          // Behaviour switches are never registered by a sub-extension, so
-          // they must not be annotated as unloaded.
-          const registered =
-            NON_LOADABLE_FEATURES.has(feature.id) ||
-            getLoadedFeatures().has(feature.id);
-          const loaded = registered ? "" : " (not loaded)";
-          const value =
-            feature.id === "usageStatusPlacement"
-              ? draft.usageStatusPlacement
-              : draft[feature.id]
-                ? "enabled"
-                : "disabled";
-          return `${feature.label}: ${value}${loaded}`;
-        });
-        choices.push("Save and exit", "Cancel");
-
-        const selected = await ctx.ui.select("Usage Settings", choices);
-        if (!selected || selected === "Cancel") return;
-        if (selected === "Save and exit") {
-          await configLoader.save(scope, draft);
-          emitUsageConfigUpdated(pi);
-          ctx.ui.notify(
-            "Quota settings saved. Run /reload to fully apply command visibility changes.",
-            "info",
-          );
-          return;
-        }
-
-        const feature = FEATURE_META.find((item) =>
-          selected.startsWith(`${item.label}:`),
-        );
-        if (!feature) continue;
-        if (
-          !NON_LOADABLE_FEATURES.has(feature.id) &&
-          !getLoadedFeatures().has(feature.id)
-        ) {
-          ctx.ui.notify(
-            `${feature.label} is not loaded by Pi in this session.`,
-            "warning",
-          );
-          continue;
-        }
-        if (feature.id === "usageStatusPlacement") {
-          const index = USAGE_STATUS_PLACEMENTS.indexOf(
-            draft.usageStatusPlacement,
-          );
-          draft.usageStatusPlacement =
-            USAGE_STATUS_PLACEMENTS[
-              (index + 1) % USAGE_STATUS_PLACEMENTS.length
-            ];
-        } else {
-          (draft as unknown as Record<string, boolean>)[feature.id] = !(
-            draft as unknown as Record<string, boolean>
-          )[feature.id];
-        }
-      }
-    },
+/**
+ * Ask every pi-usage sub-extension which feature it provides. Each extension
+ * entry is loaded as its own module instance, so this goes through the shared
+ * event bus; its handlers run synchronously within `emit`.
+ */
+export function collectLoadedFeatures(pi: ExtensionAPI): Set<UsageFeatureId> {
+  const loaded = new Set<UsageFeatureId>();
+  const off = pi.events.on(USAGE_EXTENSIONS_REGISTER_EVENT, (data: unknown) => {
+    loaded.add((data as UsageExtensionsRegisterPayload).feature);
   });
+  try {
+    pi.events.emit(USAGE_EXTENSIONS_REQUEST_EVENT, undefined);
+  } finally {
+    off();
+  }
+  return loaded;
+}
+
+type SettingsContext = {
+  cwd: string;
+  ui: {
+    select(title: string, options: string[]): Promise<string | undefined>;
+    notify(message: string, type?: "info" | "warning" | "error"): void;
+  };
+};
+
+/** Interactive settings editor behind `/usage settings`. */
+export async function openUsageSettings(
+  pi: ExtensionAPI,
+  ctx: SettingsContext,
+  getLoadedFeatures: () => Set<UsageFeatureId> = () => collectLoadedFeatures(pi),
+): Promise<void> {
+  await configLoader.load(ctx.cwd);
+  const scopeChoice = await ctx.ui.select("Save settings to", [
+    "global",
+    "local",
+    "cancel",
+  ]);
+  if (!scopeChoice || scopeChoice === "cancel") return;
+  const scope = scopeChoice as "global" | "local";
+  const draft: ResolvedUsageConfig = { ...configLoader.getConfig() };
+
+  while (true) {
+    const choices = FEATURE_META.map((feature) => {
+      // Behaviour switches are never registered by a sub-extension, so
+      // they must not be annotated as unloaded.
+      const registered =
+        NON_LOADABLE_FEATURES.has(feature.id) ||
+        getLoadedFeatures().has(feature.id);
+      const loaded = registered ? "" : " (not loaded)";
+      const value =
+        feature.id === "usageStatusPlacement"
+          ? draft.usageStatusPlacement
+          : draft[feature.id]
+            ? "enabled"
+            : "disabled";
+      return `${feature.label}: ${value}${loaded}`;
+    });
+    choices.push("Save and exit", "Cancel");
+
+    const selected = await ctx.ui.select("Usage Settings", choices);
+    if (!selected || selected === "Cancel") return;
+    if (selected === "Save and exit") {
+      await configLoader.save(scope, draft);
+      emitUsageConfigUpdated(pi);
+      ctx.ui.notify(
+        "Usage settings saved. Enabling or disabling the get_usage tool applies after /reload.",
+        "info",
+      );
+      return;
+    }
+
+    const feature = FEATURE_META.find((item) =>
+      selected.startsWith(`${item.label}:`),
+    );
+    if (!feature) continue;
+    if (
+      !NON_LOADABLE_FEATURES.has(feature.id) &&
+      !getLoadedFeatures().has(feature.id)
+    ) {
+      ctx.ui.notify(
+        `${feature.label} is not loaded by Pi in this session.`,
+        "warning",
+      );
+      continue;
+    }
+    if (feature.id === "usageStatusPlacement") {
+      const index = USAGE_STATUS_PLACEMENTS.indexOf(
+        draft.usageStatusPlacement,
+      );
+      draft.usageStatusPlacement =
+        USAGE_STATUS_PLACEMENTS[
+          (index + 1) % USAGE_STATUS_PLACEMENTS.length
+        ];
+    } else {
+      (draft as unknown as Record<string, boolean>)[feature.id] = !(
+        draft as unknown as Record<string, boolean>
+      )[feature.id];
+    }
+  }
 }

@@ -2,7 +2,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { registerUsageSettings } from "./config.js";
+import { collectLoadedFeatures, openUsageSettings } from "./config.js";
+
+const fakePi = { events: { on: () => () => {}, emit: () => {} } } as any;
 
 let home = "";
 
@@ -20,15 +22,6 @@ afterEach(() => {
 
 describe("usage settings", () => {
   it("does not mark behaviour switches as (not loaded)", async () => {
-    const commands = new Map<string, any>();
-    registerUsageSettings(
-      {
-        registerCommand(name: string, command: any) {
-          commands.set(name, command);
-        },
-      } as any,
-      () => new Set(),
-    );
 
     const seen: string[][] = [];
     let call = 0;
@@ -44,7 +37,7 @@ describe("usage settings", () => {
       },
     };
 
-    await commands.get("usage:settings").handler("", ctx);
+    await openUsageSettings(fakePi, ctx, () => new Set());
 
     const list = seen[1];
     expect(list).toBeDefined();
@@ -63,15 +56,6 @@ describe("usage settings", () => {
   });
 
   it("cycles usage status placement without toggling usage status", async () => {
-    const commands = new Map<string, any>();
-    registerUsageSettings(
-      {
-        registerCommand(name: string, command: any) {
-          commands.set(name, command);
-        },
-      } as any,
-      () => new Set(),
-    );
 
     const seen: string[][] = [];
     let phase = 0;
@@ -96,7 +80,7 @@ describe("usage settings", () => {
       },
     };
 
-    await commands.get("usage:settings").handler("", ctx);
+    await openUsageSettings(fakePi, ctx, () => new Set());
 
     const after = seen[seen.length - 1];
     // Selecting the placement entry must advance placement and must not touch
@@ -107,5 +91,34 @@ describe("usage settings", () => {
     expect(after.find((choice) => choice.startsWith("Usage status:"))).toBe(
       "Usage status: enabled (not loaded)",
     );
+  });
+});
+
+describe("collectLoadedFeatures", () => {
+  it("gathers the features sub-extensions report on request", () => {
+    const listeners = new Map<string, Array<(data: unknown) => void>>();
+    const pi = {
+      events: {
+        on(channel: string, handler: (data: unknown) => void) {
+          listeners.set(channel, [...(listeners.get(channel) ?? []), handler]);
+          return () =>
+            listeners.set(
+              channel,
+              (listeners.get(channel) ?? []).filter((h) => h !== handler),
+            );
+        },
+        emit(channel: string, data: unknown) {
+          for (const handler of listeners.get(channel) ?? []) handler(data);
+        },
+      },
+    } as any;
+    pi.events.on("usage:extensions:request", () => {
+      pi.events.emit("usage:extensions:register", { feature: "usageCommand" });
+      pi.events.emit("usage:extensions:register", { feature: "usageTool" });
+    });
+
+    expect(collectLoadedFeatures(pi)).toEqual(new Set(["usageCommand", "usageTool"]));
+    // The temporary listener is removed again.
+    expect(listeners.get("usage:extensions:register")).toEqual([]);
   });
 });

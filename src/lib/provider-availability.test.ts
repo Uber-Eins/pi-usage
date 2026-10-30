@@ -58,7 +58,7 @@ describe("isProviderConfigured", () => {
   it("does not treat another provider's key as a credential", () => {
     // openai-codex authenticates via OAuth or ~/.codex/auth.json; a plain
     // OPENAI_API_KEY belongs to the `openai` provider and would only leave
-    // /codex:usage visible and failing.
+    // /usage codex offered and failing.
     expect(
       isProviderConfigured("openai-codex", {
         ...EMPTY,
@@ -123,7 +123,7 @@ describe("isProviderConfigured", () => {
 
   it("does not treat the removed OPENCODE_GO_WORKSPACE_ID as a credential", () => {
     // Dashboard scraping was removed in #1; the workspace ID no longer
-    // authenticates anything and must not keep /opencode-go:usage visible.
+    // authenticates anything and must not keep /usage opencode-go offered.
     expect(
       isProviderConfigured("opencode-go", {
         ...EMPTY,

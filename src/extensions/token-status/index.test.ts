@@ -122,7 +122,7 @@ describe("token-status config updates", () => {
     await emitExtensionEvent("session_start", ctx);
     await vi.advanceTimersByTimeAsync(0);
 
-    // Enabling token-status from /usage:settings must apply the same
+    // Enabling token-status from /usage settings must apply the same
     // isGoProvider guard as session_start: a non-Go provider never renders
     // the Go rolling-cost line. Advance past a refresh interval to prove no
     // interval was left running either.

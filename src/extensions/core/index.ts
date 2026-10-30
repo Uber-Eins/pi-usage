@@ -4,11 +4,6 @@ import {
   clearPendingMigrationNotice,
   emitUsageConfigUpdated,
   hasPendingMigrationNotice,
-  USAGE_EXTENSIONS_REGISTER_EVENT,
-  USAGE_EXTENSIONS_REQUEST_EVENT,
-  registerUsageSettings,
-  type UsageExtensionsRegisterPayload,
-  type UsageFeatureId,
   configLoader,
   seedUsageConfigIfMissing,
 } from "../../config.js";
@@ -18,11 +13,11 @@ const NOTICE_TITLE = "pi-usage";
 const NOTICE_CONTENT = [
   "Optional features available in `pi-usage`:",
   "- Combined usage command",
-  "- Provider-specific usage commands",
+  "- Provider usage views (`/usage codex`, ...)",
   "- Usage footer status",
   "- Quota warnings",
   "",
-  "Use `/usage:settings` to enable or disable them.",
+  "Use `/usage settings` to enable or disable them.",
 ].join("\n");
 
 function wrapInRoundedBorder(
@@ -72,17 +67,7 @@ export default async function (pi: ExtensionAPI) {
     };
   });
 
-  const loadedFeatures = new Set<UsageFeatureId>();
-  pi.events.on(USAGE_EXTENSIONS_REGISTER_EVENT, (data: unknown) => {
-    const { feature } = data as UsageExtensionsRegisterPayload;
-    loadedFeatures.add(feature);
-  });
-
-  registerUsageSettings(pi, () => loadedFeatures);
-
   pi.on("session_start", async () => {
-    loadedFeatures.clear();
-    pi.events.emit(USAGE_EXTENSIONS_REQUEST_EVENT, undefined);
     emitUsageConfigUpdated(pi);
     if (hasPendingMigrationNotice()) {
       clearPendingMigrationNotice();

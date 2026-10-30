@@ -155,7 +155,7 @@ export default async function (pi: ExtensionAPI) {
     clearAlertState();
   });
 
-  // Register regardless of the enabled flag so /usage:settings can re-enable
+  // Register regardless of the enabled flag so /usage settings can re-enable
   // a feature that was disabled at startup.
   pi.events.on(USAGE_EXTENSIONS_REQUEST_EVENT, () => {
     pi.events.emit(USAGE_EXTENSIONS_REGISTER_EVENT, {

@@ -62,8 +62,8 @@ The extension writes the segment via `ctx.ui.setFooter(segment, 1)` — priority
 | `session_start` | `index.ts` | Fetch initial snapshot, write footer, and check quota risk | `usageStatus` / `quotaWarnings` |
 | `turn_end` | `extensions/quota-warnings/index.ts` | Check active-provider risk without blocking the turn | `quotaWarnings` |
 | `/usage` | `index.ts` | Force-refresh and print all windows for the active provider | `usageCommand` |
-| `/minimax:usage` | `index.ts` | Force-refresh the MiniMax provider specifically | `providerCommands` |
-| `/usage:settings` | `index.ts` | Print the resolved config (read-only) | — |
+| `/usage <provider>` | `extensions/command-quotas/command.ts` | Dashboard for one provider, e.g. `/usage minimax` | `providerCommands` |
+| `/usage settings` | `config.ts` (`openUsageSettings`) | Toggle features and save `usage.json` | — |
 
 Snapshots are cached per-provider for 60 seconds (`CACHE_TTL_MS`). The cache lives in module scope and is dropped on extension reload.
 
@@ -74,7 +74,7 @@ The extension reads `~/.pi/agent/extensions/usage.json` on every command invocat
 | Field | Default | Effect |
 |---|---|---|
 | `usageCommand` | `true` | Toggle `/usage` |
-| `providerCommands` | `true` | Toggle `/minimax:usage` |
+| `providerCommands` | `true` | Toggle `/usage <provider>` views |
 | `usageStatus` | `true` | Toggle the footer status segment |
 | `quotaWarnings` | `true` | Toggle projected-usage warning notifications |
 | `deferToSynthetic` | `true` | Suppress our footer when another extension reports the same data (reserved) |

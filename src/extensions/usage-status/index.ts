@@ -402,7 +402,7 @@ export default async function (pi: ExtensionAPI) {
 
   // Register regardless of the enabled flag: registration means "pi loaded
   // this sub-extension", which is what makes the feature toggleable in
-  // /usage:settings. Gating on the flag here prevented re-enabling a feature
+  // /usage settings. Gating on the flag here prevented re-enabling a feature
   // that was disabled at startup.
   unsubscribeEventBusListeners.push(pi.events.on(USAGE_EXTENSIONS_REQUEST_EVENT, () => {
     pi.events.emit(USAGE_EXTENSIONS_REGISTER_EVENT, { feature: "usageStatus" });

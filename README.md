@@ -34,20 +34,11 @@ Restart or `/reload` to load the extension.
 | Command | Description |
 |---|---|
 | `/usage` | Combined dashboard for all configured providers |
-| `/anthropic:usage` | Anthropic usage only |
-| `/codex:usage` | OpenAI Codex usage only |
-| `/github:usage` | GitHub Copilot usage only |
-| `/openrouter:usage` | OpenRouter usage only |
-| `/synthetic:usage` | Synthetic usage only |
-| `/grok:usage` | Grok usage only |
-| `/zai:usage` | Z.ai usage only |
-| `/opencode-go:usage` | OpenCode Go usage only |
-| `/kimi:usage` | Kimi Code usage only |
-| `/ollama:usage` | Ollama Cloud usage only |
-| `/minimax:usage` | MiniMax usage only |
-| `/commandcode:usage` | Command Code usage only |
+| `/usage <provider>` | One provider only: `anthropic`, `codex`, `github`, `openrouter`, `synthetic`, `grok`, `zai`, `opencode-go`, `kimi`, `ollama`, `minimax`, `commandcode` (full provider ids such as `openai-codex` work too) |
+| `/usage settings` | Toggle features on or off |
 | `/tokens` | Cross-session token/cost usage |
-| `/usage:settings` | Toggle features on or off |
+
+Typing `/usage ` offers the subcommands as completions.
 
 ## Features
 
@@ -76,16 +67,16 @@ Automatic warning notifications when usage or the current pace risks exhausting 
 `/usage:settings` toggles:
 
 - Combined `/usage` command
-- Per-provider `/...:usage` commands
+- Provider usage views (`/usage codex`, ...)
 - Footer usage status
 - Usage status placement — shared footer bar (default) or a dedicated line above/below the editor
 - Token usage status and `/tokens`
 - Quota warning notifications
 - Usage tool — the `get_usage` agent tool
 - Defer to Synthetic — hide the Synthetic footer when `pi-synthetic` is also showing usage
-- Hide unconfigured providers — only register `/provider:usage` commands for providers that have credentials (on by default)
+- Hide unconfigured providers — only offer `/usage <provider>` completions for providers that have credentials (on by default)
 
-Settings are saved to `~/.pi/agent/extensions/usage.json` (global) or `.pi/usage.json` (per-project). Run `/reload` after changing command visibility.
+Settings are saved to `~/.pi/agent/extensions/usage.json` (global) or `.pi/usage.json` (per-project). Run `/reload` after toggling the `get_usage` tool.
 
 ## Test
 

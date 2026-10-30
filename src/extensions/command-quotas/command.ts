@@ -1,8 +1,10 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import type { AutocompleteItem } from "@earendil-works/pi-tui";
 import {
   USAGE_EXTENSIONS_REGISTER_EVENT,
   USAGE_EXTENSIONS_REQUEST_EVENT,
   configLoader,
+  openUsageSettings,
 } from "../../config.js";
 import { type AuthStorage, quotaAuthStorage } from "../../lib/auth.js";
 import { isProviderConfigured } from "../../lib/provider-availability.js";
@@ -19,7 +21,10 @@ import {
 } from "../../providers/codex-resets.js";
 import type { QuotasResult, SupportedQuotaProvider } from "../../types/quotas.js";
 import { type CodexResetActions, QuotasComponent } from "./components/quotas-display.js";
-import { getProviderCommandInfo } from "./provider-commands.js";
+import {
+  getProviderCommandInfo,
+  resolveProviderSubcommand,
+} from "./provider-commands.js";
 import { filterDashboardSnapshots } from "./visibility.js";
 
 type Snapshot = { provider: SupportedQuotaProvider; result: QuotasResult };
@@ -130,75 +135,123 @@ export interface RegisterUsageCommandsOptions {
   isConfigured?: (provider: SupportedQuotaProvider) => boolean;
 }
 
+const SETTINGS_SUBCOMMAND = "settings";
+
+/**
+ * Completions for `/usage <arg>`: `settings`, then one entry per provider.
+ * Evaluated on every keystroke, so settings and credentials apply without a
+ * reload.
+ */
+export function usageArgumentCompletions(
+  prefix: string,
+  options: RegisterUsageCommandsOptions = {},
+): AutocompleteItem[] | null {
+  const config = configLoader.getConfig();
+  const hideUnconfigured =
+    options.hideUnconfigured ?? config.hideUnconfiguredProviders;
+  const isConfigured = options.isConfigured ?? isProviderConfigured;
+
+  const items: AutocompleteItem[] = [
+    {
+      value: SETTINGS_SUBCOMMAND,
+      label: SETTINGS_SUBCOMMAND,
+      description: "Configure pi-usage features",
+    },
+  ];
+  if (config.providerCommands) {
+    for (const provider of SUPPORTED_PROVIDERS) {
+      // A provider without credentials can only ever report "no credentials".
+      if (hideUnconfigured && !isConfigured(provider)) continue;
+      const info = getProviderCommandInfo(provider);
+      items.push({
+        value: info.subcommand,
+        label: info.subcommand,
+        description: `Display remaining ${info.title.toLowerCase()}`,
+      });
+    }
+  }
+
+  const needle = prefix.trim().toLowerCase();
+  const matches = items.filter((item) => item.value.startsWith(needle));
+  return matches.length > 0 ? matches : null;
+}
+
 export function registerUsageCommands(
   pi: ExtensionAPI,
   options: RegisterUsageCommandsOptions = {},
 ): void {
   pi.registerCommand("usage", {
-    description: "Display remaining usage for all supported providers",
-    handler: async (_args, ctx) => {
-      if (!configLoader.getConfig().usageCommand) {
-        ctx.ui.notify("/usage is disabled. Re-enable it in /usage:settings.", "warning");
+    description: "Display provider usage (`/usage <provider>` for one, `/usage settings` to configure)",
+    getArgumentCompletions: (prefix) => usageArgumentCompletions(prefix, options),
+    handler: async (args, ctx) => {
+      const arg = args.trim().toLowerCase();
+
+      // Always reachable, so a disabled feature can be re-enabled.
+      if (arg === SETTINGS_SUBCOMMAND) {
+        await openUsageSettings(pi, ctx);
         return;
       }
-      await openQuotaView(
-        "Provider Quotas",
-        async (force, signal) =>
-          filterDashboardSnapshots(
-            await fetchAllProviderQuotas(
-              quotaAuthStorage(ctx.modelRegistry),
-              { force, signal },
+
+      const config = configLoader.getConfig();
+      if (!arg) {
+        if (!config.usageCommand) {
+          ctx.ui.notify("/usage is disabled. Re-enable it in /usage settings.", "warning");
+          return;
+        }
+        await openQuotaView(
+          "Provider Quotas",
+          async (force, signal) =>
+            filterDashboardSnapshots(
+              await fetchAllProviderQuotas(
+                quotaAuthStorage(ctx.modelRegistry),
+                { force, signal },
+              ),
             ),
-          ),
+          ctx,
+        );
+        return;
+      }
+
+      const provider = resolveProviderSubcommand(arg);
+      if (!provider) {
+        const known = SUPPORTED_PROVIDERS.map(
+          (p) => getProviderCommandInfo(p).subcommand,
+        ).join(", ");
+        ctx.ui.notify(
+          `Unknown /usage argument "${arg}". Use settings or one of: ${known}.`,
+          "warning",
+        );
+        return;
+      }
+      if (!config.providerCommands) {
+        ctx.ui.notify(
+          "Provider usage views are disabled. Re-enable them in /usage settings.",
+          "warning",
+        );
+        return;
+      }
+      const info = getProviderCommandInfo(provider);
+      await openQuotaView(
+        info.title,
+        async (force, signal) => [
+          {
+            provider,
+            result: await fetchProviderQuotas(quotaAuthStorage(ctx.modelRegistry), provider, { force, signal }),
+          },
+        ],
         ctx,
       );
     },
   });
-
-  // Unconfigured providers would otherwise add a `/grok:usage`-style command
-  // that only ever reports "no credentials". Pi has no way to hide a
-  // registered command, so skip registration instead.
-  const hideUnconfigured =
-    options.hideUnconfigured ??
-    configLoader.getConfig().hideUnconfiguredProviders;
-  const isConfigured = options.isConfigured ?? isProviderConfigured;
-
-  for (const provider of SUPPORTED_PROVIDERS) {
-    if (hideUnconfigured && !isConfigured(provider)) continue;
-    const info = getProviderCommandInfo(provider);
-    pi.registerCommand(info.commandName, {
-      description: `Display remaining ${info.title.toLowerCase()}`,
-      handler: async (_args, ctx) => {
-        if (!configLoader.getConfig().providerCommands) {
-          ctx.ui.notify(`${info.commandName} is disabled. Re-enable it in /usage:settings.`, "warning");
-          return;
-        }
-        await openQuotaView(
-          info.title,
-          async (force, signal) => [
-            {
-              provider,
-              result: await fetchProviderQuotas(quotaAuthStorage(ctx.modelRegistry), provider, { force, signal }),
-            },
-          ],
-          ctx,
-        );
-      },
-    });
-  }
 }
 
 export default async function (pi: ExtensionAPI) {
   await configLoader.load();
 
-  const config = configLoader.getConfig();
-  if (config.usageCommand || config.providerCommands) {
-    registerUsageCommands(pi);
-  }
+  // Always registered: `/usage settings` must stay reachable even when every
+  // view is disabled. The handler checks the flags at call time.
+  registerUsageCommands(pi);
 
-  // Register regardless of the enabled flag so /usage:settings can toggle
-  // command visibility in both directions. The command handlers still check
-  // the config at call time.
   pi.events.on(USAGE_EXTENSIONS_REQUEST_EVENT, () => {
     pi.events.emit(USAGE_EXTENSIONS_REGISTER_EVENT, { feature: "usageCommand" });
     pi.events.emit(USAGE_EXTENSIONS_REGISTER_EVENT, { feature: "providerCommands" });
